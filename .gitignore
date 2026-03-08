@@ -1,0 +1,10 @@
+.env
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+pgdata/
+pgadmin_data/
+.idea/
+.vscode/

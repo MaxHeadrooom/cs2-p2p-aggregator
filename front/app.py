@@ -39,7 +39,6 @@ def check_live_price(hash_name):
 def calculate_net_profit(row, rate):
     cost = (row['price_lis'] * rate) * 1.03
 
-
     if row['live_p_rub'] and row['live_p_rub'] > 0:
         income_raw = row['live_p_rub']
     else:
@@ -88,7 +87,7 @@ def load_data():
     conn.close()
     return df
 
-st.title("P2P Trading Terminal")
+st.title("P2P-агрегатор")
 
 raw_df = load_data()
 if not raw_df.empty:
@@ -98,17 +97,17 @@ if not raw_df.empty:
     df = df[(df['ROI'] > -15) & (df['ROI'] < 40)]
 
     m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Связок в базе", len(df))
-    m2.metric("Макс. профит", f"{df['Прибыль'].max():.0f} ₽")
+    m1.metric("Связок в базе", f"{len(df):,}".replace(',', ' '))
+    m2.metric("Макс. прибыль", f"{df['Прибыль'].max():,.0f} ₽".replace(',', ' '))
     m3.metric("Курс USD", f"{st.session_state.usd_rate} ₽")
-    m4.metric("Проверено Валидатором", df['check_time'].notnull().sum())
+    m4.metric("Проверено Валидатором", f"{df['check_time'].notnull().sum():,}".replace(',', ' '))
 
-    st.sidebar.header("🕹 Управление")
-    search = st.sidebar.text_input("🔍 Поиск скина")
+    st.sidebar.header("Управление")
+    search = st.sidebar.text_input("Поиск скина")
     min_roi = st.sidebar.slider("Мин. ROI (%)", -5.0, 20.0, 2.0)
     min_v = st.sidebar.number_input("Мин. продаж (Vol)", value=5)
 
-    if st.sidebar.button("🗑 Очистить кэш"):
+    if st.sidebar.button("Очистить кэш"):
         st.cache_data.clear()
         st.rerun()
 
@@ -119,11 +118,9 @@ if not raw_df.empty:
         if search:
             f_df = f_df[f_df['Название'].str.contains(search, case=False)]
 
-
         def format_status(row):
-            if pd.isnull(row['check_time']): return "⌛ Ожидание"
-            return "⚡ Live"
-
+            if pd.isnull(row['check_time']): return "Ожидание"
+            return "Актуальная"
 
         f_df['Статус'] = f_df.apply(format_status, axis=1)
 
@@ -131,33 +128,32 @@ if not raw_df.empty:
             f_df.drop(columns=['full_name', 'check_time', 'live_p_rub', 'avg_m_usd', 'price_market_usd']),
             column_config={
                 "ROI": st.column_config.NumberColumn("ROI", format="%.2f%%"),
-                "Прибыль": st.column_config.NumberColumn("Профит", format="%.2f ₽"),
-                "price_lis": st.column_config.NumberColumn("Lis ($)", format="%.2f$"),
-                "Vol": st.column_config.ProgressColumn("Ликвидность", min_value=0, max_value=100),
+                "Прибыль": st.column_config.NumberColumn("Прибыль", format="%.2f ₽"),
+                "price_lis": st.column_config.NumberColumn("Lis ($)", format="$ %.0f"),
+                "Vol": st.column_config.ProgressColumn("Продажи(7 дн)", min_value=0, max_value=300, format="%d"),
             },
             use_container_width=True, height=700, on_select="rerun", selection_mode="single-row"
         )
 
     with col_panel:
-        st.markdown("### 🎯 Детали лота")
+        st.markdown("### Детали лота")
         if len(selection.selection.rows) > 0:
             row_idx = f_df.index[selection.selection.rows[0]]
             sel_item = f_df.loc[row_idx]
 
             st.info(f"**{sel_item['Название']}**")
             st.write(f"Качество: `{sel_item['Качество']}`")
-            st.write(f"Закуп (с комиссией): **{sel_item['price_lis'] * st.session_state.usd_rate * 1.03:.2f} ₽**")
+            st.write(f"Закуп (с комиссией): **{sel_item['price_lis'] * st.session_state.usd_rate * 1.03:,.2f} ₽**".replace(',', ' '))
 
-            if st.button("🚀 ПРОВЕРИТЬ СЕЙЧАС", use_container_width=True):
+            if st.button("ПРОВЕРИТЬ СЕЙЧАС", use_container_width=True):
                 with st.spinner('Запрос к Маркету...'):
                     live = check_live_price(sel_item['full_name'])
                     if isinstance(live, float):
-                        st.balloons()
-                        st.metric("Живая цена (Маркет)", f"{live:.2f} ₽")
+                        st.metric("Живая цена (Маркет)", f"{live:,.2f} ₽".replace(',', ' '))
                         cost = (sel_item['price_lis'] * st.session_state.usd_rate) * 1.03
                         inc = live * 0.95
                         final = inc * 0.95 if inc > 4411 else inc - (inc * 0.016 + 50)
-                        st.metric("Чистый профит", f"{final - cost:.2f} ₽", delta=f"{(final - cost) / cost * 100:.2f}%")
+                        st.metric("Чистая прибыль", f"{final - cost:,.2f} ₽".replace(',', ' '), delta=f"{(final - cost) / cost * 100:.2f}%")
                     else:
                         st.error(live)
         else:

@@ -1,87 +1,86 @@
 import time
 import requests
 import psycopg2
+import logging
+import random
 import sys
 import os
-import logging
-from datetime import datetime
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from src.config import DB_CONFIG, CS_MARKET_API_KEY
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] %(message)s',
-    datefmt='%H:%M:%S'
-)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s', datefmt='%H:%M:%S')
 
 
-def get_stale_items(limit=100):
+def get_stale_items(limit=50):
     conn = psycopg2.connect(**DB_CONFIG)
     cur = conn.cursor()
     cur.execute("""
         SELECT i.market_hash_name, i.id
         FROM items i
-        JOIN prices p_lis ON i.id = p_lis.item_id AND p_lis.source = 'lis_skins'
-        JOIN prices p_cs ON i.id = p_cs.item_id AND p_cs.source = 'cs_market'
-        ORDER BY 
-            (p_cs.last_live_check IS NULL) DESC, -- Сначала те, что вообще не проверялись
-            ((p_cs.price_buy / NULLIF(p_lis.price_buy, 0)) - 1) DESC, -- Потом самые профитные
-            p_cs.last_live_check ASC -- Потом самые "старые"
+        JOIN prices p ON i.id = p.item_id
+        WHERE p.source = 'cs_market'
+        ORDER BY p.last_live_check ASC NULLS FIRST
         LIMIT %s
     """, (limit,))
     rows = cur.fetchall()
     conn.close()
     return rows
 
-def update_live_price(item_id, market_name):
-    url = "https://market.csgo.com/api/v2/search-item-by-hash-name"
-    params = {'key': CS_MARKET_API_KEY, 'hash_name': market_name}
+
+def update_bulk_prices(items_chunk):
+    id_map = {item[0]: item[1] for item in items_chunk}
+    url = "https://market.csgo.com/api/v2/search-list-items-by-hash-name-all"
+
+    params = [('key', CS_MARKET_API_KEY)]
+    for name, _ in items_chunk:
+        params.append(('list_hash_name[]', name))
+
     try:
-        r = requests.get(url, params=params, timeout=5)
-        data = r.json()
+        r = requests.get(url, params=params, timeout=20)
+        response = r.json()
 
-        conn = psycopg2.connect(**DB_CONFIG)
-        cur = conn.cursor()
+        if response.get('success') and response.get('data'):
+            conn = psycopg2.connect(**DB_CONFIG)
+            cur = conn.cursor()
+            for name, offers in response['data'].items():
+                item_id = id_map.get(name)
+                if not item_id: continue
 
-        if data.get('success') and data.get('data'):
-            price_rub = float(data['data'][0]['price']) / 100
-            cur.execute("""
-                UPDATE prices 
-                SET live_price_cache = %s, last_live_check = NOW()
-                WHERE item_id = %s AND source = 'cs_market'
-            """, (price_rub, item_id))
-            status = True
+                if offers and len(offers) > 0:
+                    min_price_rub = float(offers[0]['price']) / 100
+                    cur.execute("""
+                        UPDATE prices SET live_price_cache = %s, last_live_check = NOW()
+                        WHERE item_id = %s AND source = 'cs_market'
+                    """, (min_price_rub, item_id))
+                else:
+                    cur.execute("""
+                        UPDATE prices SET last_live_check = NOW()
+                        WHERE item_id = %s AND source = 'cs_market'
+                    """, (item_id,))
+
+            conn.commit()
+            conn.close()
+            return True
         else:
-            cur.execute("""
-                UPDATE prices SET last_live_check = NOW() 
-                WHERE item_id = %s AND source = 'cs_market'
-            """, (item_id,))
-            status = False
-
-        conn.commit()
-        conn.close()
-        return status
+            logging.error(f"API Error: {response.get('error')}")
+            return False
     except Exception as e:
-        logging.error(f"Ошибка API для {market_name}: {e}")
+        logging.error(f"Network Error: {e}")
         return False
 
 
 if __name__ == "__main__":
-    logging.info("Фоновый валидатор цен запущен...")
-
     while True:
-        items = get_stale_items(50)
-        if not items:
-            logging.info("Нет предметов для проверки. Жду 60 сек...")
-            time.sleep(60)
-            continue
-
-        for name, item_id in items:
-            success = update_live_price(item_id, name)
+        chunk = get_stale_items(40)
+        if chunk:
+            success = update_bulk_prices(chunk)
             if success:
-                logging.info(f"Обновлен: {name}")
+                logging.info(f"Пачка обработана: {len(chunk)} предметов")
+                time.sleep(random.uniform(3.0, 5.0))
             else:
-                logging.info(f"Проверен (пусто): {name}")
-
-            time.sleep(0.25)
+                logging.info(f"Ошибка, ждем для безопасности")
+                time.sleep(random.uniform(30.0, 50.0))
+        else:
+            logging.info("Все предметы проверены. Жду 5 минут...")
+            time.sleep(300)

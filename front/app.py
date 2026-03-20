@@ -97,8 +97,8 @@ if not raw_df.empty:
     df = df[(df['ROI'] > -15) & (df['ROI'] < 40)]
 
     m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Связок в базе", f"{len(df):,}".replace(',', ' '))
-    m2.metric("Макс. прибыль", f"{df['Прибыль'].max():,.0f} ₽".replace(',', ' '))
+    m1.metric("Сопостовлений в базе", f"{len(df):,}".replace(',', ' '))
+    m2.metric("Максимальная чистая прибыль", f"{df['Прибыль'].max():,.0f} ₽".replace(',', ' '))
     m3.metric("Курс USD", f"{st.session_state.usd_rate} ₽")
     m4.metric("Проверено Валидатором", f"{df['check_time'].notnull().sum():,}".replace(',', ' '))
 
@@ -120,7 +120,7 @@ if not raw_df.empty:
 
         def format_status(row):
             if pd.isnull(row['check_time']): return "Ожидание"
-            return "Актуальная"
+            return "Актуальный"
 
         f_df['Статус'] = f_df.apply(format_status, axis=1)
 
@@ -128,7 +128,7 @@ if not raw_df.empty:
             f_df.drop(columns=['full_name', 'check_time', 'live_p_rub', 'avg_m_usd', 'price_market_usd']),
             column_config={
                 "ROI": st.column_config.NumberColumn("ROI", format="%.2f%%"),
-                "Прибыль": st.column_config.NumberColumn("Прибыль", format="%.2f ₽"),
+                "Прибыль": st.column_config.NumberColumn("Чистая прибыль", format="%.2f ₽"),
                 "price_lis": st.column_config.NumberColumn("Lis ($)", format="$ %.0f"),
                 "Vol": st.column_config.ProgressColumn("Продажи(7 дн)", min_value=0, max_value=300, format="%d"),
             },

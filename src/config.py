@@ -29,4 +29,4 @@ def get_usd_rate():
         r = requests.get("https://open.er-api.com/v6/latest/USD", timeout=5)
         return round(float(r.json()['rates']['RUB']), 2)
     except:
-        return 77
+        return 80

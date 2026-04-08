@@ -43,10 +43,10 @@ def calculate_net_profit(row, rate):
     else:
         income_raw = (row['avg_m_usd'] if row['avg_m_usd'] > 0 else row['price_market_usd']) * rate
     income_after_sale = income_raw * 0.95
-    if income_after_sale > 4411:
+    if income_after_sale > 2667:
         final_money = income_after_sale * 0.95
     else:
-        final_money = income_after_sale - (income_after_sale * 0.016 + 50)
+        final_money = income_after_sale - (income_after_sale * 0.035 + 40)
     net_profit = final_money - cost
     roi = (net_profit / cost * 100) if cost > 0 else 0
     return pd.Series([round(net_profit, 2), round(roi, 2)])
@@ -164,7 +164,7 @@ if not raw_df.empty:
                         st.metric("Живая цена", f"{live:,.2f} ₽".replace(',', ' '))
                         cost = (sel_item['price_lis'] * st.session_state.usd_rate) * 1.03
                         inc = live * 0.95
-                        final = inc * 0.95 if inc > 4411 else inc - (inc * 0.016 + 50)
+                        final = inc * 0.95 if inc > 2667 else inc - (inc * 0.035 + 40)
                         st.metric("Чистый профит", f"{final - cost:,.2f} ₽".replace(',', ' '),
                                   delta=f"{(final - cost) / cost * 100:.2f}%")
                     else:
